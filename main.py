@@ -2,11 +2,12 @@ import requests
 import time
 import threading
 import datetime
+import sys # <--- Añadido para forzar la salida de texto
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 
-# --- CONFIGURACIÓN (Francisco, verifica que el BUCKET sea exacto) ---
+# --- CONFIGURACIÓN ---
 API_KEY = "a4592942bf83a08e71f9a4c64b4df9e0"
 TOKEN = "XqwrSnzkqlh8w8zDPXsfTd1Q3FzDP8pEgfawxk6HK0vVf9dQef95SsXsjX_e8nJL-JngGAN0b4MmCcnFC9uPpw=="
 ORG = "6025b5f4b3e4e21e" 
@@ -18,18 +19,19 @@ class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Sniper Activo y Enviando Datos")
-    def do_HEAD(self): # Esto evita el error 501 que salía en tus logs
+        self.wfile.write(b"Sniper Activo")
+    def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
 
 def ejecutar_sniper():
-    print("🚀 SNIPER: Iniciando barrida de partidos...")
+    # El flush=True obliga a Render a mostrar el mensaje de inmediato
+    print("🚀 SNIPER: Iniciando barrida...", flush=True) 
     LIGAS_TOP = [2, 3, 13, 39, 140]
     while True:
         try:
             hoy = datetime.datetime.now().strftime('%Y-%m-%d')
-            print(f"📅 Consultando partidos para: {hoy}")
+            print(f"📅 Consultando para: {hoy}", flush=True)
             
             with InfluxDBClient(url=URL, token=TOKEN, org=ORG) as client:
                 write_api = client.write_api(write_options=SYNCHRONOUS)
@@ -48,18 +50,18 @@ def ejecutar_sniper():
                         
                         write_api.write(bucket=BUCKET, record=point)
                         count += 1
-                print(f"✅ CICLO COMPLETADO: {count} partidos enviados.")
+                print(f"✅ CICLO COMPLETADO: {count} partidos enviados.", flush=True)
             
             time.sleep(600) 
         except Exception as e:
-            print(f"❌ ERROR EN EL SNIPER: {e}")
+            print(f"❌ ERROR: {e}", flush=True)
             time.sleep(60)
 
 if __name__ == "__main__":
-    # 1. Arrancamos el Sniper en un hilo separado primero
+    # Cambiamos el orden: Arrancamos el sniper y lo dejamos correr
+    print("🎬 Arrancando hilo del Sniper...", flush=True)
     threading.Thread(target=ejecutar_sniper, daemon=True).start()
     
-    # 2. Luego arrancamos el servidor para Render
-    print("🌐 Iniciando Servidor Web en puerto 10000...")
+    print("🌐 Iniciando Servidor Web...", flush=True)
     server = HTTPServer(('0.0.0.0', 10000), SimpleHandler)
     server.serve_forever()
