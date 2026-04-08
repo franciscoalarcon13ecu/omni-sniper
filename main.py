@@ -3,7 +3,7 @@ import time
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN (Tus llaves ya están puestas) ---
 API_KEY = "a4592942bf83a08e71f9a4c64b4df9e0"
 TOKEN = "PB47SRHhqPq6lHe3WUhzojeKaUUBcjvNISL6PSWh2b1kSzgMOscolVFiW67mv19i8pz0TRnuLJy5m0h3WiEg9g=="
 ORG = "6025b5f4b3e4e21e"
@@ -12,51 +12,55 @@ URL = "https://us-east-1-1.aws.cloud2.influxdata.com"
 
 HEADERS = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': API_KEY}
 
-def escanear_oportunidades_reales():
-    print("🎯 OMNI-SNIPER: Buscando mercados de Córners y Tarjetas...")
-    url = "https://v3.football.api-sports.io/fixtures?date=2026-04-07"
+def ejecutar_sniper():
+    print("🚀 OMNI-SNIPER ACTIVADO: Iniciando vigilancia mundial...")
     
-    try:
-        response = requests.get(url, headers=HEADERS).json()
-        partidos = response.get('response', [])[:25] # Analizamos el top 25 de hoy
-        
-        with InfluxDBClient(url=URL, token=TOKEN, org=ORG) as client:
-            write_api = client.write_api(write_options=SYNCHRONOUS)
+    while True:
+        try:
+            # 1. Buscamos partidos que se están jugando EN VIVO
+            print(f"🕒 {time.strftime('%H:%M:%S')} - Escaneando partidos en vivo...")
+            url_live = "https://v3.football.api-sports.io/fixtures?live=all"
+            response = requests.get(url_live, headers=HEADERS).json()
             
-            for p in partidos:
-                f_id = p['fixture']['id']
-                home = p['teams']['home']['name']
-                away = p['teams']['away']['name']
+            partidos = response.get('response', [])
+            
+            if not partidos:
+                print("📭 No hay partidos en vivo ahora mismo. Esperando...")
+            
+            with InfluxDBClient(url=URL, token=TOKEN, org=ORG) as client:
+                write_api = client.write_api(write_options=SYNCHRONOUS)
                 
-                # Pedimos la predicción específica de CORNERS y CARDS
-                res_pred = requests.get(f"https://v3.football.api-sports.io/predictions?fixture={f_id}", headers=HEADERS).json()
-                
-                if res_pred['response']:
-                    data = res_pred['response'][0]
+                for p in partidos:
+                    f_id = p['fixture']['id']
+                    home = p['teams']['home']['name']
+                    away = p['teams']['away']['name']
+                    minuto = p['fixture']['status']['elapsed']
+                    goles_h = p['goals']['home']
+                    goles_a = p['goals']['away']
                     
-                    # 🚩 MERCADO DE CÓRNERS: Buscamos intensidad de ataque > 80%
-                    int_h = float(data['comparison']['att']['home'].replace('%',''))
-                    int_a = float(data['comparison']['att']['away'].replace('%',''))
-                    
-                    # 🟨 MERCADO DE TARJETAS: Buscamos equipos agresivos
-                    # Si la IA dice que el partido será "caliente"
-                    consejo = data['predictions']['advice']
-
-                    point = Point("sniper_v3_apuestas") \
+                    # 2. Guardamos el estado actual del partido
+                    point = Point("predicciones_sniper") \
                         .tag("partido", f"{home} vs {away}") \
-                        .tag("consejo_ia", consejo) \
-                        .field("ataque_peligroso_local", int_h) \
-                        .field("ataque_peligroso_vis", int_a)
+                        .field("minuto", float(minuto)) \
+                        .field("goles_local", float(goles_h)) \
+                        .field("goles_visitante", float(goles_a))
                     
+                    # 3. Lógica simple de alerta: Si es minuto 70+ y van empatados (ideal para córners)
+                    if minuto > 70 and goles_h == goles_a:
+                        point.field("alerta_sniper", "🔥 ATAQUE FINAL: Posible Córner/Tarjeta")
+                    else:
+                        point.field("alerta_sniper", "☕ Analizando...")
+
                     write_api.write(bucket=BUCKET, record=point)
-                    print(f"✅ Oportunidad analizada: {home} vs {away}")
-                
-                time.sleep(1) 
+                    print(f"✅ Monitor: {home} {goles_h}-{goles_a} {away} (Min {minuto})")
 
-        print("--- 🏁 Escaneo listo. ¡Mira tu InfluxDB para ver dónde apostar! ---")
+            # Esperamos 5 minutos para no saturar tu API gratuita
+            print("💤 Barrido completado. Descansando 5 minutos...")
+            time.sleep(300)
 
-    except Exception as e:
-        print(f"❌ Error: {e}")
+        except Exception as e:
+            print(f"⚠️ Error temporal: {e}. Reintentando en 60s...")
+            time.sleep(60)
 
 if __name__ == "__main__":
-    escanear_oportunidades_reales()
+    ejecutar_sniper()
