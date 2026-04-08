@@ -1,7 +1,7 @@
 import requests
 import time
 import threading
-from datetime import datetime
+import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
@@ -14,42 +14,61 @@ BUCKET = "ApuestasDeportivas"
 URL = "https://us-east-1-1.aws.cloud2.influxdata.com"
 HEADERS = {'x-rapidapi-host': 'v3.football.api-sports.io', 'x-rapidapi-key': API_KEY}
 
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Sniper Online")
+
+def run_server():
+    try:
+        server = HTTPServer(('0.0.0.0', 10000), SimpleHandler)
+        server.serve_forever()
+    except Exception:
+        pass
+
 def ejecutar_sniper():
-    # Ligas de interés: Champions (2), Libertadores (13), Europa League (3), Premier (39), España (140)
-    LIGAS_TOP = [2, 3, 13, 39, 140] 
-    print("🚀 SNIPER: Modo Planificación Ligera activado...")
+    print("🚀 SNIPER: Iniciando...")
+    # Ligas: Champions, Europa League, Libertadores, Premier, España
+    LIGAS_TOP = [2, 3, 13, 39, 140]
     
     while True:
         try:
-            hoy = datetime.now().strftime('%Y-%m-%d')
+            hoy = datetime.datetime.now().strftime('%Y-%m-%d')
             count = 0
             
-            with InfluxDBClient(url=URL, token=TOKEN, org=ORG) as client:
-                write_api = client.write_api(write_options=SYNCHRONOUS)
-                
-                for liga in LIGAS_TOP:
-                    url = f"https://v3.football.api-sports.io/fixtures?date={hoy}&league={liga}&season=2025"
-                    response = requests.get(url, headers=HEADERS).json()
-                    partidos = response.get('response', [])
-                    
-                    for p in partidos:
-                        home = p['teams']['home']['name']
-                        away = p['teams']['away']['name']
-                        estado = p['fixture']['status']['short']
-                        
-                        point = Point("predicciones_sniper") \
-                            .tag("partido", f"{home} vs {away}") \
-                            .field("alerta_sniper", f"Estado: {estado}") \
-                            .field("minuto", float(p['fixture']['status']['elapsed'] or 0))
-                        
-                        write_api.write(bucket=BUCKET, record=point)
-                        count += 1
-                
-                print(f"✅ {count} partidos de ligas TOP enviados.")
+            client = InfluxDBClient(url=URL, token=TOKEN, org=ORG)
+            write_api = client.write_api(write_options=SYNCHRONOUS)
             
+            for liga in LIGAS_TOP:
+                # Quitamos el año para que la API use el actual por defecto
+                url_api = f"https://v3.football.api-sports.io/fixtures?date={hoy}&league={liga}"
+                response = requests.get(url_api, headers=HEADERS).json()
+                partidos = response.get('response', [])
+                
+                for p in partidos:
+                    home = p['teams']['home']['name']
+                    away = p['teams']['away']['name']
+                    estado = p['fixture']['status']['short']
+                    minuto = p['fixture']['status']['elapsed'] or 0
+                    
+                    point = Point("predicciones_sniper") \
+                        .tag("partido", f"{home} vs {away}") \
+                        .field("alerta_sniper", f"Estado: {estado}") \
+                        .field("minuto", float(minuto))
+                    
+                    write_api.write(bucket=BUCKET, record=point)
+                    count += 1
+            
+            client.close()
+            print(f"✅ {count} partidos enviados correctamente.")
             time.sleep(600) 
+            
         except Exception as e:
             print(f"⚠️ Error: {e}")
             time.sleep(60)
 
-# (Manten el resto del código del servidor igual)
+if __name__ == "__main__":
+    t = threading.Thread(target=run_server, daemon=True)
+    t.start()
+    ejecutar_sniper()
